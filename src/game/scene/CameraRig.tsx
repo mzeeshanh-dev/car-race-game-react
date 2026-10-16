@@ -8,6 +8,7 @@ import { hudBus } from '../state/hudBus';
 import { rt } from '../state/runtime';
 import { useApp } from '../state/store';
 import { live } from '../state/telemetry';
+import { effects } from '../state/effects';
 import type { TrackData } from '../track/trackData';
 
 /** Cockpit dashboard + steering wheel, parented to the CAMERA so it never tilts and always lines up. */
@@ -87,6 +88,12 @@ export function CameraRig({ track }: { track: TrackData }) {
     const want = useApp.getState().settings.cameraMode;
     if (want !== ctrl.modeIndex) { ctrl.setMode(want); rt.cameraModeIndex = want; }
     ctrl.update(cam, dt, rt.car, input.lookBack);
+    const age = (performance.now() - effects.time) / 1000;
+    if (useApp.getState().settings.cameraShake && useApp.getState().screen === 'play' && age < 0.35) {
+      const strength = effects.strength * (1 - age / 0.35) * 0.12;
+      cam.position.x += Math.sin(age * 91) * strength;
+      cam.position.y += Math.sin(age * 113) * strength * 0.6;
+    }
     rt.hideBody = ctrl.hideBody;
     live().cameraName = CAMERA_MODES[ctrl.modeIndex].name;
     if (interior.current) interior.current.visible = ctrl.interior;

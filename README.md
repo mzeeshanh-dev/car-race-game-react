@@ -1,11 +1,17 @@
 # Apex Ring – 3D arcade racing (React 19 + R3F + Rapier)
 
+Includes a locally hosted CC0 sports car, day/night racing with working headlights, contact-driven impact feedback, slip-driven tire effects, and calibrated tilt steering. Existing raycast vehicle physics, track, minimap, race records and UI are preserved.
+
+See [upgrade audit, test results and technical handoff](docs/UPGRADE.md) and [asset source/license](public/models/ASSET-LICENSE.md). The car/environment are stylized; physical-device tilt and broad performance testing remain outstanding.
+
 ```bash
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # tsc (zero errors) + vite build
 npm run preview
-npm test           # vitest (45 tests: steering, physics, camera, track, race, persistence)
+npm test           # 49 Vitest tests
+npx playwright install chromium
+npm run test:browser # production-bundle browser checks (dist-e2e)
 ```
 
 ## Controls

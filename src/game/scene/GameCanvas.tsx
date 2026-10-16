@@ -16,6 +16,9 @@ import { Lighting } from './Lighting';
 import { PlayerCar } from './PlayerCar';
 import { RaceController } from './RaceController';
 import { TrackScene } from './TrackScene';
+import { DrivingEffects } from './DrivingEffects';
+import { Diagnostics } from './Diagnostics';
+import { SkidMarks } from './SkidMarks';
 
 function World() {
   const track = useMemo(() => buildTrack(), []);
@@ -44,6 +47,9 @@ function World() {
       <RaceController track={track} />
       <CameraRig track={track} />
       <EngineSound />
+      <DrivingEffects />
+      <SkidMarks />
+      {(import.meta.env.DEV || import.meta.env.VITE_E2E === '1') && <Diagnostics />}
     </group>
   );
 }
@@ -55,7 +61,6 @@ export function GameCanvas() {
   useEffect(() => () => { rt.sim = null; rt.car.valid = false; }, []);
   return (
     <Canvas
-      key={quality}
       className="game-canvas"
       dpr={[1, Math.min(2, Math.max(1, q.dprMax))]}
       shadows={q.shadows ? 'percentage' : false}

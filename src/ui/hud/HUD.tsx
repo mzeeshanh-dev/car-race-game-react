@@ -26,6 +26,7 @@ function HUDInner() {
     toasts: useRef<HTMLDivElement>(null),
     flash: useRef<HTMLDivElement>(null),
     cam: useRef<HTMLDivElement>(null),
+    progress: useRef<HTMLDivElement>(null),
   };
 
   useEffect(() => {
@@ -49,7 +50,7 @@ function HUDInner() {
         text(s.rpmText, (v.rpm / 1000).toFixed(1));
         if (s.surface) {
           const grass = v.grassCoverage > 0.4;
-          text(s.surface, grass ? 'GRASS' : v.handbrake ? 'DRIFT' : 'ASPHALT');
+          text(s.surface, grass ? 'GRASS' : v.slip > 2 && v.speedKmh > 15 ? 'DRIFT' : 'ASPHALT');
           s.surface.setAttribute('fill', grass ? '#d9a441' : v.handbrake ? '#ff7a59' : '#6fcf7a');
         }
       }
@@ -58,6 +59,7 @@ function HUDInner() {
       text(el.best.current, formatTime(r.best));
       text(el.total.current, formatTime(r.total));
       text(el.pos.current, `P${r.position}/${r.racers}`);
+      text(el.progress.current, `${!v.onRoad ? 'OFF TRACK · ' : ''}NEXT ${r.nextGate === 0 ? 'FINISH' : `CHECKPOINT ${r.nextGate}/${r.gateCount - 1}`}`);
       if (el.wrong.current) el.wrong.current.hidden = !r.wrongWay;
       const c = el.count.current;
       if (c) {
@@ -110,6 +112,7 @@ function HUDInner() {
         <div className="stat pos"><label>POS</label><span ref={el.pos}>P1/4</span></div>
       </div>
       <div className="hud-map"><Minimap /></div>
+      <div className="hud-progress" ref={el.progress} />
       <div className="hud-speedo"><Speedometer setRefs={(r) => { speedo.current = r; }} /></div>
       <div className="hud-count" ref={el.count} hidden />
       <div className="hud-wrong" ref={el.wrong} hidden>⚠ WRONG WAY</div>

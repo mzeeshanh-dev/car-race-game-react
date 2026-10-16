@@ -9,6 +9,7 @@ import { buildRoadGeometry } from '../track/geometry';
 import { createTrackPhysics } from '../track/physicsBuild';
 import { trackYaw, type TrackData } from '../track/trackData';
 import { makeCheckerTexture, makeGrassTexture, makeRoadTexture, rng } from './textures';
+import { TrackDetails } from './TrackDetails';
 
 /** Road + shoulders + embankment render mesh. Built from the SAME arrays as the trimesh collider. */
 function RoadMesh({ track }: { track: TrackData }) {
@@ -55,7 +56,10 @@ function TrackPhysics({ track }: { track: TrackData }) {
   const { world, rapier } = useRapier();
   useEffect(() => {
     const bodies = createTrackPhysics(rapier, world, track);
-    return () => { for (const b of bodies) { try { world.removeRigidBody(b); } catch { /* world already gone */ } } };
+    // Physics can replace its lazy world before child cleanup (StrictMode replay).
+    // Never pass a body belonging to the disposed world into its replacement.
+    const owner = world.bodies;
+    return () => { if (world.bodies !== owner) return; for (const b of bodies) { if (world.getRigidBody(b.handle) === b) world.removeRigidBody(b); } };
   }, [world, rapier, track]);
   return null;
 }
@@ -221,6 +225,7 @@ export function TrackScene({ track }: { track: TrackData }) {
       <CheckpointPosts track={track} />
       <Trees track={track} />
       <TrackPhysics track={track} />
+      <TrackDetails track={track} />
     </>
   );
 }

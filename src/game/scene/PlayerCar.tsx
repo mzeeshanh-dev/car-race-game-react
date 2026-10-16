@@ -1,15 +1,19 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { CuboidCollider, RigidBody, useBeforePhysicsStep, useRapier, type RapierRigidBody } from '@react-three/rapier';
 import * as THREE from 'three';
 import { CAR, FIXED_DT } from '../constants';
 import { input } from '../input/InputManager';
+import { tilt } from '../input/tilt';
 import { FEED_DEFAULT, rt } from '../state/runtime';
 import { useApp } from '../state/store';
 import { live, useTelemetry } from '../state/telemetry';
 import { VehicleSim, type DriveInput } from '../vehicle/VehicleSim';
 import type { TrackData } from '../track/trackData';
 import { CarModel } from './CarModel';
+import { reportImpact } from '../state/effects';
+import { vehicleSpec } from '../vehicle/catalog';
+import { GarageModel } from './GarageModel';
 
 export interface Spawn { x: number; y: number; z: number; yaw: number }
 
@@ -22,15 +26,26 @@ export function PlayerCar({ track, spawn }: { track: TrackData; spawn: Spawn }) 
   const bodyGroup = useRef<THREE.Group>(null);
   const feed = useRef(FEED_DEFAULT()).current;
   const color = useApp((s) => s.settings.carColor);
+  const spec = useRef(vehicleSpec(useApp.getState().restore?.vehicle ?? useApp.getState().settings.vehicle)).current;
+  const chassis = spec.chassis;
   const { world } = useRapier();
   const simRef = useRef<VehicleSim | null>(null);
+  useEffect(() => {
+    const owner = world.bodies;
+    return () => {
+      const sim = simRef.current;
+      if (sim && world.bodies === owner) world.removeVehicleController(sim.controller);
+      if (rt.sim === sim) rt.sim = null;
+      simRef.current = null;
+    };
+  }, [world]);
 
   const ensureSim = (): VehicleSim | null => {
     const body = bodyRef.current;
     if (!body) return null;
     if (simRef.current && simRef.current.body === body) return simRef.current;
     if (simRef.current) { try { world.removeVehicleController(simRef.current.controller); } catch { /* ignore */ } }
-    const sim = new VehicleSim(world, body, track);
+    const sim = new VehicleSim(world, body, track, spec);
     sim.respawn(spawn.x, spawn.y, spawn.z, spawn.yaw);
     simRef.current = sim;
     rt.sim = sim;
@@ -42,6 +57,8 @@ export function PlayerCar({ track, spawn }: { track: TrackData; spawn: Spawn }) 
   useBeforePhysicsStep(() => {
     const sim = ensureSim();
     if (!sim) return;
+    tilt.enabled = useApp.getState().settings.tilt;
+    tilt.sensitivity = useApp.getState().settings.tiltSensitivity;
     input.sample(FIXED_DT);
     const phase = live().race.phase;
     sim.sensitivity = useApp.getState().settings.sensitivity;
@@ -89,16 +106,21 @@ export function PlayerCar({ track, spawn }: { track: TrackData; spawn: Spawn }) 
       rotation={[0, spawn.yaw, 0]}
       canSleep={false}
       ccd
+      onContactForce={e => {
+        if (useApp.getState().screen !== 'play' || live().race.phase !== 'racing') return;
+        const p = bodyRef.current?.translation();
+        if (p) reportImpact(e.totalForceMagnitude, FIXED_DT, chassis.mass, p.x, p.y, p.z, performance.now());
+      }}
     >
       <CuboidCollider
-        args={[CAR.halfExtents[0], CAR.halfExtents[1], CAR.halfExtents[2]]}
-        position={[0, CAR.colliderOffsetY, 0]}
+        args={[...chassis.halfExtents]}
+        position={[0, chassis.colliderOffsetY, 0]}
         density={0}
         friction={0.1}
         restitution={0.2}
       />
       <group ref={visual}>
-        <CarModel color={color} feed={feed} bodyRef={bodyGroup} />
+        {spec.id === 'apex' ? <CarModel color={color} feed={feed} bodyRef={bodyGroup} /> : <GarageModel spec={spec} color={color} feed={feed} bodyRef={bodyGroup} />}
       </group>
     </RigidBody>
   );

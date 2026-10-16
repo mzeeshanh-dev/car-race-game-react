@@ -11,11 +11,15 @@ import { useApp } from '../state/store';
 import { live } from '../state/telemetry';
 import { createNearest, nearestOnTrack, trackYaw, type TrackData } from '../track/trackData';
 import { TRACK_ID, persistence, type RaceResult } from '../../persistence/db';
+import { raceRecordId } from '../vehicle/catalog';
 
 const COUNTDOWN_SECONDS = 3;
 
 /** Race rules: countdown, ordered checkpoints, lap timing, wrong-way, respawn, persistence snapshots. */
 export function RaceController({ track }: { track: TrackData }) {
+  const totalLaps = useRef(useApp.getState().restore?.totalLaps ?? useApp.getState().settings.raceLaps).current;
+  const vehicle = useRef(useApp.getState().restore?.vehicle ?? useApp.getState().settings.vehicle).current;
+  const recordId = raceRecordId(vehicle, totalLaps);
   const timer = useRef(new LapTimer(useApp.getState().bestLap)).current;
   const near = useRef(createNearest()).current;
   const st = useRef({
@@ -27,10 +31,12 @@ export function RaceController({ track }: { track: TrackData }) {
     snapshotT: 0,
     finishing: false,
     countdown: COUNTDOWN_SECONDS + 0.8,
+    finishTimeout: undefined as ReturnType<typeof setTimeout> | undefined,
   }).current;
 
   useEffect(() => {
-    return input.onAction((a) => { if (a === 'respawn') rt.respawnRequested = true; });
+    const off = input.onAction((a) => { if (a === 'respawn') rt.respawnRequested = true; });
+    return () => { off(); clearTimeout(st.finishTimeout); };
   }, []);
 
   // Race clock runs on the fixed physics step so timing stays correct even if rendering is slow.
@@ -58,7 +64,7 @@ export function RaceController({ track }: { track: TrackData }) {
     // ---- first-frame setup (fresh race or restore after refresh) ----------------------------
     if (!st.started) {
       st.started = true;
-      race.totalLaps = TRACK_CFG.lapCount;
+      race.totalLaps = totalLaps;
       race.best = timer.best;
       race.gateCount = track.gates.length;
       const snap = app.restore;
@@ -66,13 +72,13 @@ export function RaceController({ track }: { track: TrackData }) {
         sim.respawn(snap.car.x, snap.car.y + 0.4, snap.car.z, snap.car.yaw);
         timer.restore(snap.total, snap.lapTime, snap.laps, timer.best);
         const n = nearestOnTrack(track, snap.car.x, snap.car.z, -1, near);
-        st.tracker = new CheckpointTracker(track.gateS, track.length, TRACK_CFG.lapCount, n.s);
+        st.tracker = new CheckpointTracker(track.gateS, track.length, totalLaps, n.s);
         st.tracker.restore(snap.lap, snap.next, snap.lastGate, n.s);
         race.phase = 'racing'; race.countdown = 0;
         timer.start();
       } else {
         const n = nearestOnTrack(track, car.x, car.z, -1, near);
-        st.tracker = new CheckpointTracker(track.gateS, track.length, TRACK_CFG.lapCount, n.s);
+        st.tracker = new CheckpointTracker(track.gateS, track.length, totalLaps, n.s);
         race.phase = 'countdown';
       }
     }
@@ -85,17 +91,20 @@ export function RaceController({ track }: { track: TrackData }) {
     car.upY = sim.live.upY;
 
     if (race.phase === 'racing') {
+      // A projected spline crossing outside the road is not a valid checkpoint.
+      // Shoulders inside the barriers are drivable. Reject only actual shortcuts / flying over gates.
+      if (Math.abs(n.lateral) > TRACK_CFG.barrierOffset || car.y > n.y + 4) tracker.sync(n.s);
       const ev = tracker.update(n.s);
       if (ev.type === 'checkpoint') {
         hudBus.toast({ kind: 'checkpoint', text: `Checkpoint ${ev.index}/${track.gates.length - 1}`, sub: formatTime(timer.total) });
       } else if (ev.type === 'lap' || ev.type === 'finish') {
         const res = timer.completeLap();
-        void persistence.submitLap(TRACK_ID, res.time).then((isBest) => {
+        void persistence.submitLap(recordId, res.time).then((isBest) => {
           if (isBest) app.setBests(res.time, useApp.getState().bestTotal);
         });
         race.best = timer.best;
         if (ev.type === 'lap') {
-          hudBus.toast({ kind: res.isBest ? 'best' : 'lap', text: res.isBest ? `BEST LAP ${formatTime(res.time)}` : `Lap ${ev.lap}: ${formatTime(res.time)}`, sub: `Lap ${ev.lap + 1} of ${TRACK_CFG.lapCount}` });
+          hudBus.toast({ kind: res.isBest ? 'best' : 'lap', text: res.isBest ? `BEST LAP ${formatTime(res.time)}` : `Lap ${ev.lap}: ${formatTime(res.time)}`, sub: `Lap ${ev.lap + 1} of ${totalLaps}` });
         } else if (!st.finishing) {
           st.finishing = true;
           timer.stop();
@@ -104,11 +113,11 @@ export function RaceController({ track }: { track: TrackData }) {
           let ahead = 0;
           for (const a of rt.ai) if (a.dist >= progress) ahead++;
           const result: RaceResult = {
-            trackId: TRACK_ID, total: timer.total, laps: timer.laps.slice(), best: timer.best ?? res.time,
+            trackId: TRACK_ID, vehicle, totalLaps, total: timer.total, laps: timer.laps.slice(), best: timer.best ?? res.time,
             position: ahead + 1, racers: rt.ai.length + 1, date: Date.now(),
           };
-          void persistence.submitTotal(TRACK_ID, result.total).then((isBest) => { if (isBest) app.setBests(useApp.getState().bestLap, result.total); });
-          setTimeout(() => useApp.getState().finishRace(result), 1800);
+          void persistence.submitTotal(recordId, result.total).then((isBest) => { if (isBest) app.setBests(useApp.getState().bestLap, result.total); });
+          st.finishTimeout = setTimeout(() => useApp.getState().finishRace(result), 1800);
         }
       }
       // race position
@@ -117,8 +126,13 @@ export function RaceController({ track }: { track: TrackData }) {
       for (const a of rt.ai) if (a.dist > prog) ahead++;
       race.position = ahead + 1;
       race.racers = rt.ai.length + 1;
-      race.lap = Math.min(tracker.lap, TRACK_CFG.lapCount);
+      race.lap = Math.min(tracker.lap, totalLaps);
       race.nextGate = tracker.next;
+      const validDistance = Math.min(tracker.progress(n.s), (tracker.lap - 1) * track.length + (tracker.next === 0 ? track.length : track.gateS[tracker.next]));
+      race.progress = race.phase === 'finished' ? 1 : Math.max(0, Math.min(0.999, validDistance / (track.length * totalLaps)));
+      race.remaining = Math.max(0, track.length * totalLaps - validDistance);
+      const nextDistance = (track.gateS[tracker.next] - n.s + track.length) % track.length;
+      race.missedGate = nextDistance > track.length * 0.75 && Math.abs(n.lateral) <= TRACK_CFG.barrierOffset;
     }
     race.lapTime = timer.lapTime;
     race.total = timer.total;
@@ -149,7 +163,7 @@ export function RaceController({ track }: { track: TrackData }) {
       st.snapshotT = 0;
       const p = sim.body.translation();
       void persistence.saveRace({
-        trackId: TRACK_ID, lap: tracker.lap, next: tracker.next, lastGate: tracker.lastGate,
+        trackId: TRACK_ID, vehicle, totalLaps, lap: tracker.lap, next: tracker.next, lastGate: tracker.lastGate,
         total: timer.total, lapTime: timer.lapTime, laps: timer.laps.slice(),
         car: { x: p.x, y: p.y, z: p.z, yaw: car.yaw }, savedAt: Date.now(),
       });

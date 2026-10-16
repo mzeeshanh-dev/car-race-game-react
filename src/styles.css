@@ -64,3 +64,7 @@ kbd { background:#222b45; border:1px solid #394468; border-bottom-width:2px; bor
 @media (pointer:coarse) { .hud-speedo { width:132px !important; } }
 @media (pointer:coarse) and (min-height:600px) { .hud-speedo { top:auto !important; bottom:150px; width:170px !important; } }
 @media (max-width:520px) { .hud-top .stat:nth-child(3) { display:none; } }
+.hud-progress { position:absolute; top:76px; left:50%; transform:translateX(-50%); padding:6px 12px; background:rgba(8,12,22,.75); border-radius:8px; font-size:11px; letter-spacing:1px; white-space:nowrap; color:var(--cyan); }
+@media(max-width:900px) { .hud-map { top:100px; width:108px; } .hud-top { left:8px; transform:none; } }
+@media(pointer:coarse) and (max-height:520px) { .hud-map { top:76px; width:80px; } .hud-speedo { top:158px !important; width:104px !important; } .tbtn.steer { width:64px; height:64px; } .tbtn.pedal { width:64px; height:78px; } .tbtn.small { width:52px; height:44px; } .touch-right,.touch-left { bottom:12px; gap:8px !important; } }
+@media(max-width:520px) { .hud-map { top:118px; width:90px; } .hud-progress { top:78px; } .touch-left { left:8px; gap:6px !important; } .touch-right { right:8px; gap:6px !important; bottom:105px; } .tbtn.steer { width:65px; height:65px; } .tbtn.pedal { width:64px; height:78px; } .tbtn.small { width:52px; } }

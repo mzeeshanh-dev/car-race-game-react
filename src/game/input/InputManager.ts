@@ -1,4 +1,5 @@
 import { applyDeadzone, smoothSteer } from './steering';
+import { tilt } from './tilt';
 
 export type InputAction = 'cycleCamera' | 'respawn' | 'pause' | 'mute' | { camera: number };
 type ActionHandler = (a: InputAction) => void;
@@ -32,6 +33,7 @@ export class InputManager {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.clear);
+    window.addEventListener('deviceorientation', this.onTilt);
   }
 
   detach(): void {
@@ -40,10 +42,12 @@ export class InputManager {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.clear);
+    window.removeEventListener('deviceorientation', this.onTilt);
     this.clear();
   }
 
   clear = (): void => {
+    this.reset();
     this.keys.clear();
     this.touch.left = this.touch.right = this.touch.gas = this.touch.brake = this.touch.hand = false;
   };
@@ -73,6 +77,10 @@ export class InputManager {
     return false;
   }
 
+  private onTilt = (e: DeviceOrientationEvent) => {
+    if (e.beta !== null && e.gamma !== null) tilt.receive(e.beta, e.gamma, screen.orientation?.angle ?? 0);
+  };
+
   /** Advance input state by dt seconds (call from the fixed physics step). */
   sample(dt: number): void {
     const k = this.keys;
@@ -81,6 +89,7 @@ export class InputManager {
     let brk = k.size && this.down('KeyS', 'ArrowDown') ? 1 : 0;
     let target = (this.down('KeyD', 'ArrowRight') ? 1 : 0) - (this.down('KeyA', 'ArrowLeft') ? 1 : 0);
     let hand = this.down('Space');
+    if (target === 0) target = tilt.sample();
     this.lookBack = this.down('KeyB');
 
     if (t.gas) thr = 1;

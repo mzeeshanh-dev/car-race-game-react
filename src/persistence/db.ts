@@ -1,26 +1,38 @@
 import { openDB, type IDBPDatabase } from 'idb';
+import { vehicleSpec, type VehicleId } from '../game/vehicle/catalog';
 
 export type Quality = 'low' | 'medium' | 'high';
 
 export interface Settings {
+  vehicle: VehicleId;
+  raceLaps: number;
   sensitivity: number; // 0.5 .. 1.5
   quality: Quality;
   cameraMode: number; // 0..5
   carColor: string;
   volume: number; // 0..1
   muted: boolean;
+  environment: 'day' | 'night';
+  sfxVolume: number;
+  cameraShake: boolean;
+  tilt: boolean;
+  tiltSensitivity: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  vehicle: 'apex', raceLaps: 1,
   sensitivity: 1,
   quality: 'medium',
   cameraMode: 0,
   carColor: '#e63946',
   volume: 0.5,
   muted: false,
+  environment: 'day', sfxVolume: 0.6, cameraShake: true, tilt: false, tiltSensitivity: 1,
 };
 
 export interface SavedRace {
+  vehicle?: VehicleId;
+  totalLaps?: number;
   trackId: string;
   lap: number;
   next: number;
@@ -33,6 +45,8 @@ export interface SavedRace {
 }
 
 export interface RaceResult {
+  vehicle?: VehicleId;
+  totalLaps?: number;
   trackId: string;
   total: number;
   laps: number[];
@@ -147,12 +161,19 @@ export class Persistence {
 export function sanitizeSettings(s: Settings): Settings {
   const q: Quality[] = ['low', 'medium', 'high'];
   return {
+    vehicle: vehicleSpec(s.vehicle).id,
+    raceLaps: [1, 2, 3].includes(s.raceLaps) ? s.raceLaps : 1,
     sensitivity: Math.min(1.5, Math.max(0.5, Number(s.sensitivity) || 1)),
     quality: q.includes(s.quality) ? s.quality : 'medium',
     cameraMode: Math.min(5, Math.max(0, Math.round(Number(s.cameraMode) || 0))),
     carColor: /^#[0-9a-fA-F]{6}$/.test(s.carColor) ? s.carColor : DEFAULT_SETTINGS.carColor,
     volume: Math.min(1, Math.max(0, Number.isFinite(Number(s.volume)) ? Number(s.volume) : 0.5)),
     muted: !!s.muted,
+    environment: s.environment === 'night' ? 'night' : 'day',
+    sfxVolume: Number.isFinite(s.sfxVolume) ? Math.min(1, Math.max(0, s.sfxVolume)) : 0.6,
+    cameraShake: s.cameraShake !== false,
+    tilt: !!s.tilt,
+    tiltSensitivity: Number.isFinite(s.tiltSensitivity) ? Math.min(2, Math.max(0.5, s.tiltSensitivity)) : 1,
   };
 }
 

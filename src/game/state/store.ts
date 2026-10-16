@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { raceRecordId, vehicleSpec } from '../vehicle/catalog';
 import {
   DEFAULT_SETTINGS, TRACK_ID, persistence, sanitizeSettings,
   type RaceResult, type SavedRace, type Settings,
@@ -61,7 +62,9 @@ export const useApp = create<AppState>((set, get) => ({
     } else if (hash.startsWith('#/finish')) {
       screen = result ? 'finish' : 'menu';
     }
-    set({ settings, bestLap: best.bestLap, bestTotal: best.bestTotal, screen, needsResume, restore, result, hydrated: true });
+    if (restore) { settings.vehicle = vehicleSpec(restore.vehicle).id; settings.raceLaps = restore.totalLaps ?? 3; }
+    const selectedBest = await persistence.getBest(raceRecordId(settings.vehicle, settings.raceLaps));
+    set({ settings, bestLap: selectedBest.bestLap, bestTotal: selectedBest.bestTotal, screen, needsResume, restore, result, hydrated: true });
   },
 
   startRace() {
@@ -88,8 +91,16 @@ export const useApp = create<AppState>((set, get) => ({
   setScreen(screen) { set({ screen }); },
 
   updateSettings(p) {
+    if (get().screen !== 'menu') { p = { ...p }; delete p.vehicle; delete p.raceLaps; }
     const next = sanitizeSettings({ ...get().settings, ...p });
     set({ settings: next });
+    if (p.vehicle !== undefined || p.raceLaps !== undefined) {
+      set({ bestLap: null, bestTotal: null });
+      const key = raceRecordId(next.vehicle, next.raceLaps);
+      void persistence.getBest(key).then(best => {
+        if (raceRecordId(get().settings.vehicle, get().settings.raceLaps) === key) set({ bestLap: best.bestLap, bestTotal: best.bestTotal });
+      });
+    }
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => { void persistence.saveSettings(next); }, 150);
   },

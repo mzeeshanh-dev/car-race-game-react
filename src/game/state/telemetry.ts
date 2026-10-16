@@ -4,6 +4,9 @@ import { createVehicleLive, type VehicleLive } from '../vehicle/VehicleSim';
 export type RacePhase = 'countdown' | 'racing' | 'finished';
 
 export interface RaceLive {
+  progress: number;
+  remaining: number;
+  missedGate: boolean;
   phase: RacePhase;
   countdown: number; // seconds remaining incl. GO window
   lap: number;
@@ -32,6 +35,7 @@ export function createLive(): LiveData {
   return {
     vehicle: createVehicleLive(),
     race: {
+      progress: 0, remaining: 0, missedGate: false,
       phase: 'countdown', countdown: 3, lap: 1, totalLaps: 3, lapTime: 0, total: 0, best: null,
       position: 1, racers: 4, wrongWay: false, nextGate: 1, gateCount: 12,
     },
